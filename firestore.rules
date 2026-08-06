@@ -1,0 +1,76 @@
+rules_version = '2';
+
+// Choresies security rules — honest-flatmates threat model.
+// Membership: a device (anonymous-auth uid) is "joined" to a household once it
+// has created households/{hid}/joins/{uid} — which requires presenting the
+// household password hash as proof. The hash itself is never client-readable.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function joined(hid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/households/$(hid)/joins/$(request.auth.uid));
+    }
+
+    match /households/{hid} {
+      // Public doc (name, salt, tz, threshold) — needed to find & join by name.
+      allow get, list: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.thresholdMinutes is number;
+      // Members may tune settings; identity fields stay immutable.
+      allow update: if joined(hid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['thresholdMinutes']);
+      allow delete: if false;
+
+      match /private/{docId} {
+        allow read: if false;
+        // Created only in the same batch as the household, by its creator.
+        allow create: if signedIn()
+          && getAfter(/databases/$(database)/documents/households/$(hid)).data.createdBy == request.auth.uid;
+        allow update, delete: if false;
+      }
+
+      match /joins/{uid} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        // Joining = proving you know the password (hash comparison server-side).
+        // getAfter() makes this work both for joiners (doc pre-exists) and for
+        // the creator writing household+private+join in one batch.
+        allow create: if signedIn() && request.auth.uid == uid
+          && request.resource.data.proof
+             == getAfter(/databases/$(database)/documents/households/$(hid)/private/auth).data.passwordHash;
+        allow update, delete: if false;
+      }
+
+      match /members/{mid} {
+        allow read, create, update: if joined(hid);
+        // You may delete only a profile this device is signed in as.
+        allow delete: if joined(hid)
+          && resource.data.deviceUids.hasAny([request.auth.uid]);
+      }
+
+      match /tasks/{tid} {
+        allow read, create, update: if joined(hid);
+        allow delete: if false;
+      }
+
+      match /logs/{lid} {
+        allow read, create: if joined(hid);
+        allow update: if false;
+        // You may delete only your own logs (your uid is on that member's profile).
+        allow delete: if joined(hid)
+          && get(/databases/$(database)/documents/households/$(hid)/members/$(resource.data.memberId))
+             .data.deviceUids.hasAny([request.auth.uid]);
+      }
+
+      match /stats/{sid} {
+        allow read, create, update: if joined(hid);
+        allow delete: if false;
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dev-dist/
+*.local
+.DS_Store
+
+# Firebase deploy cache
+.firebase/
+
+# Design inspiration + build brief (kept local only)
+instructions.txt
+print 1.jpg
+print 2.jpg
+print 3.jpg
+living room wall.jpg
+Nipto Screenshot.png
