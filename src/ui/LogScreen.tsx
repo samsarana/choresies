@@ -57,7 +57,9 @@ export function LogScreen({
     onLog({ taskId: pending.taskId, name: pending.name, minutes }, origin)
     setPending(null)
     setQ('')
-    inputRef.current?.focus({ preventScroll: true })
+    // Deliberately no refocus: the keyboard must drop so the confetti and
+    // toast are visible. The next log starts with a tap on the search box.
+    ;(document.activeElement as HTMLElement | null)?.blur?.()
   }
 
   return (
